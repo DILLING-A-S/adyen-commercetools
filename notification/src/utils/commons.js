@@ -57,6 +57,15 @@ async function readAndParseJsonFile(pathToJsonFileFromProjectRoot) {
   return JSON.parse(fileContent)
 }
 
+// Event codes from Adyen webhooks that are NOT HMAC-signed (e.g. the Generic Pending
+// webhook, eventCode PENDING) and that carry no transaction, so they may be
+// authenticated with Basic Auth instead of HMAC. Only add a code here when it is both
+// (1) confirmed unsigned by Adyen for the webhook in use and (2) non-money
+// (transactionType null in resources/adyen-events.json).
+const UNSIGNED_EVENT_CODES = new Set(['PENDING'])
+
+export { UNSIGNED_EVENT_CODES }
+
 export default {
   collectRequestData,
   sendResponse,

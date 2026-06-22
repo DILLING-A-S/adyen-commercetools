@@ -1,9 +1,10 @@
 import _ from 'lodash'
 import url from 'url'
-import utils from '../../utils/commons.js'
+import utils, { UNSIGNED_EVENT_CODES } from '../../utils/commons.js'
 import { isRecoverableError, getErrorCause } from '../../utils/error-utils.js'
 import notificationHandler from '../../handler/notification/notification.handler.js'
 import { getCtpProjectConfig, getAdyenConfig } from '../../utils/parser.js'
+import { hasValidBasicAuth } from '../../utils/authentication.js'
 
 async function handleNotification(request, response, logger) {
   if (request.method !== 'POST') {
@@ -22,6 +23,22 @@ async function handleNotification(request, response, logger) {
       const parts = url.parse(request.url)
       const ctpProjectConfig = getCtpProjectConfig(notification, parts.path)
       const adyenConfig = getAdyenConfig(notification)
+
+      // Webhooks that Adyen does not HMAC-sign (e.g. the Generic Pending webhook,
+      // eventCode PENDING) have HMAC skipped in processNotification, so authenticate
+      // them with Basic Auth here — reject if the credentials are missing or invalid.
+      const eventCode = notification?.NotificationRequestItem?.eventCode
+      if (
+        adyenConfig.enableHmacSignature &&
+        UNSIGNED_EVENT_CODES.has(eventCode) &&
+        !hasValidBasicAuth(request, ctpProjectConfig.projectKey)
+      ) {
+        logger.error(
+          { notification: utils.getNotificationForTracking(notification) },
+          'Rejected PENDING notification: missing or invalid Basic Auth credentials.',
+        )
+        return utils.sendResponse(response, 401)
+      }
 
       await notificationHandler.processNotification({
         notification,
