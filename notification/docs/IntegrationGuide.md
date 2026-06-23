@@ -36,6 +36,35 @@ If you want to do the setup manually, please follow the [instructions](https://d
 
 > Note: HMAC verification is enabled by default. You could use "enableHmacSignature: false" field in [ADYEN_CONFIG](./HowToRun.md#environment-variable) to disable the verification feature.
 
+### Webhooks that Adyen does not HMAC-sign (e.g. Generic Pending)
+
+Some Adyen webhook types are **not** HMAC-signed and can only be secured with Basic Auth in the Customer Area — for example the [Generic Pending webhook](https://docs.adyen.com/development-resources/webhooks/webhook-types) (`eventCode: PENDING`), used for redirect payment methods such as iDEAL and MobilePay. Their payload contains no `additionalData`/`hmacSignature`, so with HMAC verification enabled they would otherwise be rejected.
+
+For an allowlist of unsigned, non-money event codes (currently only `PENDING`), the notification module skips HMAC verification and instead authenticates the request with HTTP Basic Auth. All other events (e.g. `AUTHORISATION`, `CAPTURE`, `REFUND`) still require a valid HMAC signature, so money/state-changing events can never be authenticated by Basic Auth alone.
+
+To enable this:
+
+1. In the Adyen Customer Area, set **Basic authentication** (username and password) on the webhook (the Security section of the webhook configuration).
+2. Add the same credentials to the matching commercetools project in `ADYEN_INTEGRATION_CONFIG`:
+
+   ```json
+   {
+     "commercetools": {
+       "<your-project-key>": {
+         "clientId": "...",
+         "clientSecret": "...",
+         "authentication": {
+           "scheme": "basic",
+           "username": "...",
+           "password": "..."
+         }
+       }
+     }
+   }
+   ```
+
+A `PENDING` notification without valid Basic Auth credentials is rejected with a `401` response and is not processed.
+
 ### Fallback in case `metadata` is not available
 
 In rare cases it could happen that notifications do not have `metadata.ctProjectKey` field. Without this field it is not possible to determine which commercetools project the notification belongs to. In order to avoid this rare issue, it is recommended to include the commercetools project key in the path of the URL. In this case, the `public URL` for the Notification module must have the following format:

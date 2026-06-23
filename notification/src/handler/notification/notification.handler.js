@@ -2,7 +2,7 @@ import _ from 'lodash'
 import { serializeError } from 'serialize-error'
 import VError from 'verror'
 import { validateHmacSignature } from '../../utils/hmacValidator.js'
-import utils from '../../utils/commons.js'
+import utils, { UNSIGNED_EVENT_CODES } from '../../utils/commons.js'
 import ctp from '../../utils/ctp.js'
 import config from '../../config/config.js'
 
@@ -16,7 +16,11 @@ async function processNotification({
     commercetools_project_key: ctpProjectConfig.projectKey,
   })
 
-  if (enableHmacSignature) {
+  // Some Adyen webhooks (e.g. the Generic Pending webhook, eventCode PENDING) are not
+  // HMAC-signed by Adyen and carry no transaction; those are authenticated with Basic
+  // Auth in the controller instead. Every other event still requires a valid signature.
+  const eventCode = notification?.NotificationRequestItem?.eventCode
+  if (enableHmacSignature && !UNSIGNED_EVENT_CODES.has(eventCode)) {
     const errorMessage = validateHmacSignature(notification)
     if (errorMessage) {
       ctpLogger.error(
