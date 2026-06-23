@@ -1,0 +1,53 @@
+# Lightweight CI for the fork: linting, formatting checks, and unit tests only.
+# Unlike the upstream `ci.yml`, this needs NO secrets — it skips the integration
+# tests that require real commercetools/Adyen credentials and an ngrok tunnel.
+name: Lean CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.module }} — lint & unit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [extension, notification]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: |
+            extension/package-lock.json
+            notification/package-lock.json
+
+      # Both modules' dependencies are installed because the unit-test helpers
+      # import across modules (notification/test imports from extension, etc.).
+      - name: Install extension dependencies
+        run: npm ci
+        working-directory: extension
+
+      - name: Install notification dependencies
+        run: npm ci
+        working-directory: notification
+
+      - name: Lockfile lint
+        run: npx lockfile-lint --path package-lock.json --allowed-schemes "https:" "git+https:" --allowed-hosts npm github.com
+        working-directory: ${{ matrix.module }}
+
+      - name: Code checks (eslint + prettier)
+        run: npm run check
+        working-directory: ${{ matrix.module }}
+
+      - name: Unit tests
+        run: npm run unit
+        working-directory: ${{ matrix.module }}
